@@ -79,8 +79,20 @@ def find_photo(cover_path: str | Path, size: int = 256) -> PhotoBox | None:
     dist = np.linalg.norm(a - paper[None, None, :], axis=-1)
     mask = dist > 0.17
 
+    # A collage has a quiet, uniform margin around its contents. A full-bleed
+    # cover does not — and without this guard the border gradient of an ordinary
+    # photographic sleeve looks like a "photo pasted on paper" and gets cropped.
+    ring = max(2, min(h, w) // 16)
+    border_vals = np.concatenate([
+        dist[:ring].reshape(-1), dist[-ring:].reshape(-1),
+        dist[:, :ring].reshape(-1), dist[:, -ring:].reshape(-1),
+    ])
+    uniform = float((border_vals < 0.12).mean())
+    if uniform < 0.72:
+        return None                      # no paper margin: the sleeve *is* the image
+
     if mask.mean() > 0.80:
-        return None                      # the sleeve *is* the photo
+        return None                      # contents fill the sheet
 
     rows = _run_bounds(mask.mean(axis=1), 0.22)
     cols = _run_bounds(mask.mean(axis=0), 0.22)
@@ -99,7 +111,11 @@ def find_photo(cover_path: str | Path, size: int = 256) -> PhotoBox | None:
 
     x, y = cols[0] / w, rows[0] / h
     bw, bh = (cols[1] - cols[0]) / w, (rows[1] - rows[0]) / h
+    if bw * bh > 0.78:
+        return None                      # that is the whole sheet, not a photo
     conf = float(mask[rows[0]:rows[1], cols[0]:cols[1]].mean())
+    if conf < 0.75:
+        return None                      # too ragged to be a solid print
     return PhotoBox(x=x, y=y, w=bw, h=bh, confidence=conf)
 
 

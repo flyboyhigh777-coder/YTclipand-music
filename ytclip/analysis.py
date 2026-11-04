@@ -140,6 +140,37 @@ def track_beats(env: np.ndarray, fps: float, bpm: float, tightness: float = 180.
     return (beats / fps).astype(np.float32)
 
 
+def log_bands(spec: np.ndarray, freqs: np.ndarray, n: int = 24,
+              fmin: float = 45.0, fmax: float = 9500.0) -> np.ndarray:
+    """(n, frames) log-spaced band energy, 0..1 — the compact stand-in for the
+    full spectrogram."""
+    edges = np.geomspace(fmin, fmax, n + 1)
+    rows = [
+        spec[m].mean(axis=0) if (m := band_mask(freqs, edges[k], edges[k + 1])).any()
+        else np.zeros(spec.shape[1], np.float32)
+        for k in range(n)
+    ]
+    mat = np.log1p(np.stack(rows) * 45.0)
+    peak = float(np.percentile(mat, 99.5)) or 1.0
+    return np.clip(mat / max(peak, 1e-6), 0.0, 1.0).astype(np.float32)
+
+
+def pitch_classes(spec: np.ndarray, freqs: np.ndarray) -> np.ndarray:
+    """(12, frames) chroma — 'what chord is this', used to spot repeats."""
+    out = np.zeros((12, spec.shape[1]), dtype=np.float32)
+    ok = freqs > 27.5
+    if not ok.any():
+        return out
+    midi = 69 + 12 * np.log2(np.maximum(freqs, 1e-6) / 440.0)
+    pc = np.round(midi).astype(int) % 12
+    for k in range(12):
+        m = ok & (pc == k) & band_mask(freqs, 60, 4000)
+        if m.any():
+            out[k] = spec[m].mean(axis=0)
+    out /= out.sum(axis=0, keepdims=True) + 1e-9
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # analysis container
 # --------------------------------------------------------------------------- #
@@ -162,6 +193,10 @@ class Analysis:
     downbeats: np.ndarray           # every 4th beat, seconds
     spec: np.ndarray = field(repr=False, default_factory=lambda: np.zeros((1, 1), np.float32))
     freqs: np.ndarray = field(repr=False, default_factory=lambda: np.zeros(1, np.float32))
+    # compact derived features — enough for hooks, bars and caching, so the full
+    # spectrogram (tens of megabytes) never has to be kept or stored
+    bands24: np.ndarray = field(repr=False, default_factory=lambda: np.zeros((0, 0), np.float32))
+    chroma12: np.ndarray = field(repr=False, default_factory=lambda: np.zeros((0, 0), np.float32))
 
     # ---- sampling helpers (used by the visual templates) ----
     def at(self, curve: np.ndarray, t: float) -> float:
@@ -204,6 +239,11 @@ class Analysis:
                       fmin: float = 40.0, fmax: float = 9000.0) -> np.ndarray:
         """Log-spaced, smoothed magnitude bars at time `t`, each 0..1."""
         if self.spec.size <= 1:
+            if self.bands24.size:
+                fi = int(np.clip(round(t * self.fps), 0, self.bands24.shape[1] - 1))
+                col = self.bands24[:, fi]
+                src = np.linspace(0, len(col) - 1, n_bars)
+                return np.clip(np.interp(src, np.arange(len(col)), col), 0, 1).astype(np.float32)
             return np.zeros(n_bars, dtype=np.float32)
         fi = int(np.clip(round(t * self.fps), 0, self.spec.shape[1] - 1))
         col = self.spec[:, fi]
@@ -257,6 +297,9 @@ def analyze(path: str | Path, sr: int = SR, verbose: bool = False) -> Analysis:
     active = v_rel > thr
     active = _bool_close_open(active, close=int(0.18 * fps), open_=int(0.12 * fps))
 
+    bands24 = log_bands(spec, freqs, 24)
+    chroma12 = pitch_classes(spec, freqs)
+
     bpm = estimate_tempo(onset, fps)
     beats = track_beats(onset, fps, bpm)
     if len(beats) > 2:
@@ -270,7 +313,7 @@ def analyze(path: str | Path, sr: int = SR, verbose: bool = False) -> Analysis:
         path=str(path), duration=info.duration or float(len(y) / sr), sr=sr, fps=fps,
         times=times, rms=rms, onset=onset, low=low, mid=mid, high=high,
         vocal=v_rel, vocal_active=active, bpm=bpm, beats=beats, downbeats=downbeats,
-        spec=spec, freqs=freqs,
+        spec=spec, freqs=freqs, bands24=bands24, chroma12=chroma12,
     )
 
 
@@ -320,3 +363,56 @@ def vocal_phrases(a: Analysis, min_len: float = 0.35,
         else:
             merged.append([s, e])
     return [(s, e) for s, e in merged if e - s >= min_len]
+
+
+# --------------------------------------------------------------------------- #
+# caching
+# --------------------------------------------------------------------------- #
+_CACHE_VERSION = 3
+
+
+def _fingerprint(path: str | Path) -> str:
+    st = Path(path).stat()
+    return f"{_CACHE_VERSION}:{st.st_size}:{int(st.st_mtime)}"
+
+
+def analyze_cached(path: str | Path, cache_dir: str | Path,
+                   sr: int = SR, verbose: bool = False) -> Analysis:
+    """Same as `analyze`, but keeps the result on disk.
+
+    A full pass costs ~20 s on a four-minute track, and nothing about a track
+    changes between runs — so repeated renders should not pay for it again.
+    """
+    cache = Path(cache_dir) / "analysis.npz"
+    fp = _fingerprint(path)
+    if cache.exists():
+        try:
+            d = np.load(cache, allow_pickle=False)
+            if str(d["fingerprint"]) == fp:
+                if verbose:
+                    print(f"  анализ из кэша: {cache.name}")
+                return Analysis(
+                    path=str(path), duration=float(d["duration"]), sr=int(d["sr"]),
+                    fps=float(d["fps"]), times=d["times"], rms=d["rms"],
+                    onset=d["onset"], low=d["low"], mid=d["mid"], high=d["high"],
+                    vocal=d["vocal"], vocal_active=d["vocal_active"].astype(bool),
+                    bpm=float(d["bpm"]), beats=d["beats"], downbeats=d["downbeats"],
+                    freqs=d["freqs"], bands24=d["bands24"], chroma12=d["chroma12"],
+                )
+        except Exception:
+            pass  # a broken cache is simply ignored
+
+    a = analyze(path, sr=sr, verbose=verbose)
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            cache, fingerprint=np.array(fp), duration=a.duration, sr=a.sr, fps=a.fps,
+            times=a.times, rms=a.rms, onset=a.onset, low=a.low, mid=a.mid,
+            high=a.high, vocal=a.vocal, vocal_active=a.vocal_active.astype(np.uint8),
+            bpm=a.bpm, beats=a.beats, downbeats=a.downbeats, freqs=a.freqs,
+            bands24=a.bands24, chroma12=a.chroma12,
+        )
+    except Exception as exc:
+        if verbose:
+            print(f"  (кэш не сохранён: {exc})")
+    return a

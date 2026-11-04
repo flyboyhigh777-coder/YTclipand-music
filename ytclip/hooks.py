@@ -29,6 +29,8 @@ class Segment:
 
 def chroma(a: Analysis) -> np.ndarray:
     """(12, n_frames) pitch-class energy — a cheap 'what chord is this' feature."""
+    if a.chroma12.size:
+        return a.chroma12
     f = a.freqs
     out = np.zeros((12, a.spec.shape[1]), dtype=np.float32)
     ok = f > 27.5

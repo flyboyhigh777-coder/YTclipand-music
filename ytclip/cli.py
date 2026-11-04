@@ -70,6 +70,7 @@ def _get_lyrics(args, a: an.Analysis, work: Path) -> ly.Lyrics | None:
         lyr = ly.auto_time(lyr, a) if not lyr.timed else ly.fill_word_times(lyr, a)
 
     if lyr is not None:
+        lyr = ly.snap_lines_to_beats(lyr, a)
         if getattr(args, "offset", 0.0):
             lyr = ly.shift_all(lyr, float(args.offset))
         ly.write_lrc(lyr, work / "timing.lrc", title=getattr(args, "title", None),
@@ -167,7 +168,7 @@ def cmd_reels(args) -> int:
 
     _p(f"=== {artist} — {title} ===")
     _p("1/5 Анализ трека…")
-    a = an.analyze(audio, verbose=True)
+    a = an.analyze_cached(audio, work, verbose=True)
 
     _p("2/5 Обложка и палитра…")
     cover = _prepare_cover(audio, Path(args.cover) if args.cover else None, work)

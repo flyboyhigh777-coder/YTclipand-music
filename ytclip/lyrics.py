@@ -250,6 +250,28 @@ def _time_evenly(lyr: Lyrics, a: Analysis) -> Lyrics:
     return fill_word_times(lyr, a)
 
 
+def snap_lines_to_beats(lyr: Lyrics, a: Analysis, window: float = 0.14) -> Lyrics:
+    """Nudge line starts onto the nearest beat when they are already close.
+
+    Singing almost always enters on or just before a beat; snapping removes the
+    few-frame wobble that makes captions feel slightly off even when the words
+    are right.
+    """
+    if not len(a.beats):
+        return lyr
+    beats = a.beats
+    for line in lyr.lines:
+        i = int(np.argmin(np.abs(beats - line.start)))
+        cand = float(beats[i])
+        delta = cand - line.start
+        if abs(delta) <= window and line.duration > abs(delta) + 0.2:
+            line.start = cand
+            if line.words:
+                line.words[0].start = cand
+                line.words[0].end = max(line.words[0].end, cand + 0.09)
+    return lyr
+
+
 def fill_word_times(lyr: Lyrics, a: Analysis | None = None,
                     snap_window: float = 0.11) -> Lyrics:
     """Give every token a start/end inside its line, snapped to vocal onsets."""

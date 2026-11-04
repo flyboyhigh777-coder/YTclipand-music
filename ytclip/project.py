@@ -62,6 +62,8 @@ def slugify(text: str, fallback: str = "track") -> str:
 def band_matrix(a: Analysis, n_bands: int = 24,
                  fmin: float = 45.0, fmax: float = 9500.0) -> np.ndarray:
     """(n_bands, n_frames) log-spaced spectrum energy, normalised to 0..1."""
+    if a.bands24.size and n_bands == a.bands24.shape[0]:
+        return a.bands24
     edges = np.geomspace(fmin, fmax, n_bands + 1)
     rows = []
     for k in range(n_bands):
