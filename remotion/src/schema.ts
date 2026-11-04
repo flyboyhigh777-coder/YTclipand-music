@@ -57,7 +57,16 @@ export type ClipProps = {
     reason?: string;
     score?: number;
   };
-  cover: { file: string | null };
+  cover: {
+    file: string | null;
+    /** where the photograph sits inside the sleeve, 0..1 (null = sleeve is one image) */
+    photo?: { x: number; y: number; w: number; h: number; cx: number; cy: number; confidence: number } | null;
+    /** the photograph cut out and upscaled once, ready to fill the frame */
+    photoFile?: string | null;
+    /** real pixel width of the crop before upscaling — the limit on zoom */
+    photoSourcePx?: number;
+  };
+  logo?: { file: string | null };
   audio?: { file: string | null };
   palette: Palette;
   music: { bpm: number; beats: number[]; downbeats: number[]; beatsPerBar: number };
@@ -87,7 +96,8 @@ export const demoProps: ClipProps = {
     width: 1080,
     height: 1920,
   },
-  cover: { file: null },
+  cover: { file: null, photo: null, photoFile: null, photoSourcePx: 0 },
+  logo: { file: null },
   audio: { file: null },
   palette: {
     colors: ["#1b1033", "#ff4d6d", "#38c7ff", "#ffd166"],

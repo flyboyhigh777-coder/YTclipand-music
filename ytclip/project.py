@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .analysis import Analysis
+from .artwork import export_photo, find_photo
 from .hooks import Segment
 from .lyrics import Lyrics, chunk_line
 from .palette import Palette
@@ -27,7 +28,14 @@ TEMPLATES: dict[str, str] = {
     "vinyl-3d":    "3D-сцена: обложка как вращающаяся пластинка со светом. Эффектное интро.",
     "spectrum":    "Спектр-бары и обложка-карточка. Под инструментальные и битовые куски.",
     "glitch-cut":  "Жёсткие монтажные склейки по тактам, RGB-сдвиг, вспышки. Под самый хук.",
+    # th3rd. — фирменный набор, язык взят с обложки альбома
+    "th3rd-sheet":     "Лист с обложкой лежит на столе, камера дышит, текст — на обрывках бумаги.",
+    "th3rd-marker":    "Текст пишется синим маркером по бумаге, слово за словом. Ключевое слово обводится красным.",
+    "th3rd-zine":      "Зин-нарезка: новый кадр обложки каждый такт, скотч, красные круги. Под хук.",
+    "th3rd-stairwell": "3D-сцена по мотиву лого: ступени подъезда, лампа над входом, обложка висит в воздухе.",
 }
+
+TH3RD_TEMPLATES = ["th3rd-sheet", "th3rd-marker", "th3rd-zine", "th3rd-stairwell"]
 
 CAPTION_STYLES = ("word-pop", "line-karaoke", "line-fill")
 
@@ -98,6 +106,7 @@ def build_clip(
     *,
     audio_source: Path,
     cover_source: Path | None,
+    logo_source: Path | None = None,
     slug: str,
     title: str,
     artist: str,
@@ -117,13 +126,36 @@ def build_clip(
     asset_dir = public_dir / "clips" / slug
     asset_dir.mkdir(parents=True, exist_ok=True)
 
-    cover_rel = None
+    def _publish(src: Path | None, stem: str) -> str | None:
+        """Copy an asset into Remotion's public/ and return its relative path."""
+        if src is None or not Path(src).exists():
+            return None
+        ext = Path(src).suffix.lower() or ".png"
+        dest = asset_dir / f"{stem}{ext}"
+        if not dest.exists() or dest.stat().st_mtime < Path(src).stat().st_mtime:
+            shutil.copyfile(src, dest)
+        return f"clips/{slug}/{dest.name}"
+
+    cover_rel = _publish(Path(cover_source) if cover_source else None, "cover")
+    photo_box = None
+    photo_rel = None
+    photo_src_px = 0
     if cover_source is not None and Path(cover_source).exists():
-        ext = Path(cover_source).suffix.lower() or ".jpg"
-        dest = asset_dir / f"cover{ext}"
-        if not dest.exists() or dest.stat().st_mtime < Path(cover_source).stat().st_mtime:
-            shutil.copyfile(cover_source, dest)
-        cover_rel = f"clips/{slug}/{dest.name}"
+        found = find_photo(cover_source)
+        photo_box = found.as_dict() if found else None
+        if found is not None:
+            # pre-cut and upscale once, so the renderer never has to stretch a
+            # small JPEG across a 1080x1920 frame
+            made = export_photo(
+                cover_source, work_dir / "photo.jpg", found,
+                target_w=1500, trim_bottom=0.18,
+            )
+            photo_rel = _publish(made, "photo")
+            if made is not None:
+                marker = Path(made).with_suffix(".src.txt")
+                if marker.exists():
+                    photo_src_px = int(marker.read_text().strip() or 0)
+    logo_rel = _publish(Path(logo_source) if logo_source else None, "logo")
 
     # beats inside the window, rebased to clip time
     beats = [round(float(b - t0), 4) for b in analysis.beats if t0 - 0.5 <= b <= t1 + 0.5]
@@ -172,7 +204,9 @@ def build_clip(
             "reason": seg.reason,
             "score": round(float(seg.score), 3),
         },
-        "cover": {"file": cover_rel},
+        "cover": {"file": cover_rel, "photo": photo_box, "photoFile": photo_rel,
+                  "photoSourcePx": photo_src_px},
+        "logo": {"file": logo_rel},
         "palette": palette.as_dict(),
         "music": {
             "bpm": round(float(analysis.bpm), 2),
@@ -217,7 +251,7 @@ def plan_clips(
     count: int | None = None,
 ) -> list[ClipPlan]:
     """Pair each chosen segment with a template, cycling through the template list."""
-    tpl = templates or ["cover-pulse", "lyric-focus", "glitch-cut", "vinyl-3d"]
+    tpl = templates or list(TH3RD_TEMPLATES)
     for t in tpl:
         if t not in TEMPLATES:
             raise ValueError(f"unknown template '{t}'. Available: {', '.join(TEMPLATES)}")

@@ -76,6 +76,11 @@ def render(
         f"--log={log}",
         "--codec=h264",
         "--crf=18",
+        # jpeg frames make x264 pick yuvj420p (full range), which looks washed
+        # out or crushed on players that honour the flag — pin the broadcast
+        # pixel format and colour space instead (rules.md §3.1)
+        "--pixel-format=yuv420p",
+        "--color-space=bt709",
         "--disable-web-security",
         "--gl=swangle",
         "--muted",

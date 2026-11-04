@@ -1,4 +1,5 @@
 import React from "react";
+import "./lib/fonts";
 import { Composition } from "remotion";
 import { demoProps, type ClipProps } from "./schema";
 import { CoverPulse } from "./templates/CoverPulse";
@@ -6,6 +7,10 @@ import { LyricFocus } from "./templates/LyricFocus";
 import { Spectrum } from "./templates/Spectrum";
 import { GlitchCut } from "./templates/GlitchCut";
 import { Vinyl3D } from "./templates/Vinyl3D";
+import { Sheet } from "./templates/Sheet";
+import { Marker } from "./templates/Marker";
+import { ZineCut } from "./templates/ZineCut";
+import { Stairwell3D } from "./templates/Stairwell3D";
 
 /** Duration, size and fps all come from clip.json (rules.md §7.1). */
 const metadata = ({ props }: { props: ClipProps }) => ({
@@ -31,5 +36,11 @@ export const RemotionRoot: React.FC = () => (
     <Composition id="spectrum" component={Spectrum} {...common} />
     <Composition id="glitch-cut" component={GlitchCut} {...common} />
     <Composition id="vinyl-3d" component={Vinyl3D} {...common} />
+
+    {/* th3rd. — scrapbook language taken from the album artwork */}
+    <Composition id="th3rd-sheet" component={Sheet} {...common} />
+    <Composition id="th3rd-marker" component={Marker} {...common} />
+    <Composition id="th3rd-zine" component={ZineCut} {...common} />
+    <Composition id="th3rd-stairwell" component={Stairwell3D} {...common} />
   </>
 );

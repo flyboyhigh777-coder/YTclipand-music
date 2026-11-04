@@ -171,10 +171,15 @@ def cmd_reels(args) -> int:
 
     _p("2/5 Обложка и палитра…")
     cover = _prepare_cover(audio, Path(args.cover) if args.cover else None, work)
-    if cover is None:
+    if getattr(args, "palette", None) and cover is not None:
+        pass
+    if cover is None and not getattr(args, "palette", None):
         _p("  обложки нет — графика пойдёт на цветах по умолчанию")
         palette = pal.Palette(colors=["#1b1033", "#ff4d6d"], bg="#0d0718", bg2="#1d1038",
                               accent="#ff4d6d", accent2="#38c7ff", text="#faf8f5", dark=True)
+    elif getattr(args, "palette", None):
+        palette = pal.load_preset(args.palette)
+        _p(f"  палитра из пресета: {args.palette}")
     else:
         palette = pal.extract(cover)
         _p(f"  палитра: {palette.as_dict()['accent']} / {palette.as_dict()['accent2']} "
@@ -198,7 +203,9 @@ def cmd_reels(args) -> int:
     for plan in plans:
         props = pj.build_clip(
             a, lyr, palette, plan,
-            audio_source=audio, cover_source=cover, slug=slug,
+            audio_source=audio, cover_source=cover,
+            logo_source=Path(args.logo) if getattr(args, "logo", None) else None,
+            slug=slug,
             title=title, artist=artist,
             public_dir=PUBLIC, work_dir=work,
             fps=args.fps, intensity=args.intensity,
@@ -253,6 +260,16 @@ def cmd_render(args) -> int:
         _p("  исходный трек не найден — видео без звука")
     _p(f"Готово: {out}")
     return 0
+
+
+def cmd_check(args) -> int:
+    from .check import check
+    bad = 0
+    for f in args.files:
+        rep = check(f, min_len=args.min_len, max_len=args.max_len)
+        _p(rep.text())
+        bad += 0 if rep.passed else 1
+    return 0 if bad == 0 else 2
 
 
 def cmd_doctor(args) -> int:
@@ -340,6 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--captions", default="word-pop", choices=list(pj.CAPTION_STYLES))
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--intensity", type=float, default=1.0, help="сила эффектов 0..1.5")
+    p.add_argument("--palette", help="JSON с палитрой вместо авто-подбора, напр. assets/brand/th3rd.json")
+    p.add_argument("--logo", help="файл логотипа (png с прозрачностью)")
     p.add_argument("--concurrency", type=int, default=None)
     p.add_argument("--dry-run", action="store_true", help="только подготовить clip.json")
     add_common(p)
@@ -355,6 +374,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("templates", help="список шаблонов")
     p.set_defaults(func=cmd_templates)
+
+    p = sub.add_parser("check", help="проверить готовый клип по чек-листу")
+    p.add_argument("files", nargs="+")
+    p.add_argument("--min-len", type=float, default=10.0)
+    p.add_argument("--max-len", type=float, default=60.0)
+    p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("doctor", help="проверить окружение")
     p.set_defaults(func=cmd_doctor)
