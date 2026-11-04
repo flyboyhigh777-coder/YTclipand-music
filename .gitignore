@@ -1,0 +1,17 @@
+# пользовательские материалы и результаты (rules.md §5)
+input/
+work/
+out/
+remotion/public/clips/
+
+# зависимости и сборка
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+remotion/.remotion/
+
+# системное
+.DS_Store
+*.log
