@@ -168,3 +168,82 @@ def fit_segment_to_lines(seg: Segment, line_spans: list[tuple[float, float]],
         if s < end < e and (e - end) <= max_extend:
             end = e + 0.12
     return Segment(max(0.0, start), end, seg.score, seg.reason)
+
+
+def plan_cuts(
+    a: Analysis,
+    min_len: float = 10.0,
+    max_len: float = 15.0,
+    count: int = 6,
+    beats_per_bar: int = 4,
+    prefer_vocal: bool = True,
+) -> list[Segment]:
+    """Slice the whole track into short, bar-aligned cuts for short-form video.
+
+    Unlike `find_hooks`, which hunts for the single best moment, this spreads
+    the cuts across the song: the track is divided into as many zones as there
+    are cuts, and the strongest bar-aligned window inside each zone wins. That
+    way a set of clips covers the verse, the chorus and the outro instead of
+    four variations on the same eight bars.
+    """
+    sec_per_bar = beats_per_bar * 60.0 / max(a.bpm, 1e-6)
+    bars_min = max(1, int(np.ceil(min_len / sec_per_bar)))
+    bars_max = max(bars_min, int(np.floor(max_len / sec_per_bar)))
+    bar_options = list(range(bars_min, bars_max + 1)) or [bars_min]
+
+    starts = a.downbeats if len(a.downbeats) > 3 else a.beats
+    if not len(starts):
+        step = max_len
+        out = []
+        t = 0.0
+        while t + min_len <= a.duration and len(out) < count:
+            out.append(Segment(t, min(t + max_len, a.duration), 0.0, ""))
+            t += max_len
+        return out
+
+    rep, bt = repetition_score(a, bars_max * beats_per_bar)
+
+    cands: list[tuple[float, float, float, str]] = []
+    for s in starts:
+        for bars in bar_options:
+            length = bars * sec_per_bar
+            if length < min_len - 0.35 or length > max_len + 0.35:
+                continue
+            e = s + length
+            if e > a.duration - 0.05:
+                continue
+            loud = _mean_between(a.times, a.rms, s, e)
+            voc = _mean_between(a.times, a.vocal_active.astype(np.float32), s, e)
+            repw = float(np.interp(s, bt, rep)) if len(bt) else 0.0
+            pre = _mean_between(a.times, a.rms, max(0.0, s - sec_per_bar / 2), s)
+            entrance = max(0.0, loud - pre)
+            score = (
+                1.0 * loud
+                + (1.1 if prefer_vocal else 0.3) * voc
+                + 0.8 * repw
+                + 0.5 * entrance
+            )
+            cands.append((float(s), float(e), float(score),
+                          _reason(voc, repw, entrance)))
+
+    if not cands:
+        return []
+
+    # one cut per zone, so the set covers the whole song
+    zones = max(1, count)
+    zone_len = a.duration / zones
+    chosen: list[Segment] = []
+    for z in range(zones):
+        lo, hi = z * zone_len, (z + 1) * zone_len
+        inside = [c for c in cands if lo <= c[0] < hi]
+        pool = inside or [c for c in cands if lo - zone_len * 0.4 <= c[0] < hi + zone_len * 0.4]
+        if not pool:
+            continue
+        pool.sort(key=lambda c: -c[2])
+        for s, e, sc, why in pool:
+            if all(e <= c.start or s >= c.end for c in chosen):
+                chosen.append(Segment(s, e, sc, why))
+                break
+
+    chosen.sort(key=lambda s: s.start)
+    return chosen[:count]

@@ -35,7 +35,16 @@ TEMPLATES: dict[str, str] = {
     "th3rd-stairwell": "3D-сцена по мотиву лого: ступени подъезда, лампа над входом, обложка висит в воздухе.",
 }
 
+TEMPLATES["ink-pulse"] = (
+    "Абстракция: чернильная волна по спектру, кольца на битах, кляксы на ударах. Обложка не нужна."
+)
+TEMPLATES["ink-scene"] = (
+    "Рисованная сцена во дворе, дорисовывается по тактам: подъезд, лавка, луна, окна. Обложка не нужна."
+)
+
 TH3RD_TEMPLATES = ["th3rd-sheet", "th3rd-marker", "th3rd-zine", "th3rd-stairwell"]
+# default for short cuts: generated visuals, no artwork
+CUT_TEMPLATES = ["ink-scene", "ink-pulse"]
 
 CAPTION_STYLES = ("word-pop", "line-karaoke", "line-fill")
 

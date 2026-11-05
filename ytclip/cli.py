@@ -244,6 +244,100 @@ def cmd_reels(args) -> int:
     return 0 if ok or args.dry_run else 2
 
 
+def cmd_cuts(args) -> int:
+    """Split a track into short vertical clips with generated visuals."""
+    audio = Path(args.audio)
+    if not audio.exists():
+        _p(f"Файл не найден: {audio}")
+        return 1
+    title = args.title or audio.stem
+    artist = args.artist or "—"
+    slug, work, out_dir = _slug_and_dirs(audio, title)
+
+    _p(f"=== {artist} — {title} ===")
+    _p("1/4 Анализ трека…")
+    a = an.analyze_cached(audio, work, verbose=True)
+
+    _p("2/4 Текст и тайминг слов…")
+    lyr = _get_lyrics(args, a, work)
+    if lyr is None:
+        _p("  текста нет — субтитров в клипах не будет")
+
+    _p(f"3/4 Нарезка на фрагменты {args.min_len:.0f}–{args.max_len:.0f} с…")
+    segs = hooks.plan_cuts(a, min_len=args.min_len, max_len=args.max_len, count=args.count)
+    if lyr is not None:
+        segs = [hooks.fit_segment_to_lines(s, lyr.spans()) for s in segs]
+    for i, s in enumerate(segs, 1):
+        _p(f"  {i}. {s}")
+    if not segs:
+        _p("Не удалось нарезать трек.")
+        return 1
+
+    templates = args.templates.split(",") if args.templates else list(pj.CUT_TEMPLATES)
+    plans = pj.plan_clips(segs, templates, caption_style=args.captions, count=len(segs))
+
+    preset = Path(args.palette) if args.palette else (ROOT / "assets" / "brand" / "th3rd.json")
+    if preset.exists():
+        palette = pal.load_preset(preset)
+        _p(f"  палитра: {preset.name}")
+    else:
+        palette = pal.Palette(
+            colors=[(226, 222, 213), (26, 26, 30)], bg=(226, 222, 213), bg2=(212, 207, 195),
+            accent=(179, 62, 45), accent2=(58, 64, 121), text=(26, 26, 30), dark=False,
+        )
+
+    _p("4/4 Рендер…")
+    results: list[dict] = []
+    for plan in plans:
+        props = pj.build_clip(
+            a, lyr, palette, plan,
+            audio_source=audio, cover_source=None,
+            logo_source=Path(args.logo) if getattr(args, "logo", None) else None,
+            slug=slug, title=title, artist=artist,
+            public_dir=PUBLIC, work_dir=work,
+            fps=args.fps, intensity=args.intensity,
+        )
+        name = f"{slug}__cut{plan.index:02d}__{plan.template}"
+        _p(f"  [{plan.index}/{len(plans)}] {plan.template}  "
+           f"{plan.segment.start:.1f}–{plan.segment.end:.1f}s  -> {name}.mp4")
+        if args.dry_run:
+            results.append({"clip": name, "rendered": False})
+            continue
+        try:
+            silent = work / f"{name}.silent.mp4"
+            rb.render(plan.template, props, silent, concurrency=args.concurrency)
+            slice_wav = work / f"{name}.wav"
+            ffmpeg_io.cut_audio(audio, slice_wav, plan.segment.start, plan.segment.duration)
+            final = out_dir / f"{name}.mp4"
+            ffmpeg_io.mux(silent, slice_wav, final)
+            silent.unlink(missing_ok=True)
+            slice_wav.unlink(missing_ok=True)
+            from .check import check as quality_check
+            rep = quality_check(final, min_len=args.min_len - 1, max_len=args.max_len + 2)
+            status = "годен" if rep.passed else "НЕ годен"
+            _p(f"      готово: {final.name}  ({final.stat().st_size/1e6:.1f} МБ) — {status}")
+            for w in rep.warn:
+                _p(f"        ! {w}")
+            for f_ in rep.fail:
+                _p(f"        ОШИБКА {f_}")
+            results.append({"clip": name, "file": str(final), "rendered": True,
+                            "ok": rep.passed})
+        except Exception as exc:
+            _p(f"      ОШИБКА: {exc}")
+            results.append({"clip": name, "error": str(exc), "rendered": False})
+
+    report = out_dir / "cuts-report.json"
+    report.write_text(json.dumps(
+        {"track": {"title": title, "artist": artist, "bpm": a.bpm, "duration": a.duration},
+         "lyrics_source": lyr.source if lyr else "none",
+         "cuts": [{"start": s.start, "end": s.end, "reason": s.reason} for s in segs],
+         "clips": results}, ensure_ascii=False, indent=1), encoding="utf-8")
+    ok = sum(1 for r in results if r.get("rendered"))
+    _p()
+    _p(f"Готово: {ok}/{len(results)} нарезок в {out_dir}")
+    return 0 if ok or args.dry_run else 2
+
+
 def cmd_render(args) -> int:
     props_path = Path(args.clip_json)
     props = json.loads(props_path.read_text(encoding="utf-8"))
@@ -364,6 +458,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="только подготовить clip.json")
     add_common(p)
     p.set_defaults(func=cmd_reels)
+
+    p = sub.add_parser("cuts", help="нарезать трек на короткие вертикальные клипы")
+    p.add_argument("audio")
+    p.add_argument("--lyrics", help="файл с текстом (.txt/.lrc/.srt)")
+    p.add_argument("--count", type=int, default=6, help="сколько нарезок")
+    p.add_argument("--min-len", type=float, default=10.0)
+    p.add_argument("--max-len", type=float, default=15.0)
+    p.add_argument("--templates", help="шаблоны через запятую (по умолчанию ink-scene,ink-pulse)")
+    p.add_argument("--captions", default="word-pop", choices=list(pj.CAPTION_STYLES))
+    p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--intensity", type=float, default=1.0)
+    p.add_argument("--palette", help="JSON с палитрой")
+    p.add_argument("--logo", help="файл логотипа")
+    p.add_argument("--concurrency", type=int, default=None)
+    p.add_argument("--dry-run", action="store_true")
+    add_common(p)
+    p.set_defaults(func=cmd_cuts)
 
     p = sub.add_parser("render", help="отрендерить один готовый clip.json")
     p.add_argument("clip_json")

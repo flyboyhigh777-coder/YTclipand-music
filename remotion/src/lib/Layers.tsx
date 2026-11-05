@@ -1,6 +1,6 @@
 /** Shared visual layers: film grain, vignette, light sweep, safe-zone guides. */
 import React from "react";
-import { AbsoluteFill, random } from "remotion";
+import { AbsoluteFill } from "remotion";
 import { rgba } from "./music";
 
 export const Vignette: React.FC<{ strength?: number; color?: string }> = ({
@@ -18,39 +18,49 @@ export const Vignette: React.FC<{ strength?: number; color?: string }> = ({
   />
 );
 
-/** Animated film grain. Cheap: a few pre-seeded noise tiles cycled per frame. */
-export const Grain: React.FC<{ frame: number; opacity?: number; cell?: number }> = ({
-  frame,
-  opacity = 0.14,
-  cell = 3,
-}) => {
-  const seed = frame % 8;
+/**
+ * Animated film grain.
+ *
+ * The tiles are built once at module load, not inside the component: rebuilding
+ * a 900-element SVG string and re-parsing it as a data URI on every frame was
+ * the single most expensive thing in the render.
+ */
+const GRAIN_TILES: string[] = (() => {
   const size = 160;
-  const dots = React.useMemo(() => {
-    const out: string[] = [];
+  const cell = 3;
+  const tiles: string[] = [];
+  for (let seed = 0; seed < 8; seed++) {
+    const parts: string[] = [];
     for (let i = 0; i < 900; i++) {
-      const x = Math.floor(random(`gx-${seed}-${i}`) * size);
-      const y = Math.floor(random(`gy-${seed}-${i}`) * size);
-      const v = Math.floor(120 + random(`gv-${seed}-${i}`) * 135);
-      out.push(
+      const x = Math.floor((Math.abs(Math.sin((seed * 977 + i) * 12.9898)) % 1) * size);
+      const y = Math.floor((Math.abs(Math.sin((seed * 311 + i) * 78.233)) % 1) * size);
+      const v = Math.floor(120 + (Math.abs(Math.sin((seed * 7 + i) * 43.123)) % 1) * 135);
+      parts.push(
         `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" fill="rgb(${v},${v},${v})"/>`
       );
     }
-    return out.join("");
-  }, [seed, cell]);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${dots}</svg>`;
-  return (
-    <AbsoluteFill
-      style={{
-        backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`,
-        backgroundRepeat: "repeat",
-        mixBlendMode: "overlay",
-        opacity,
-        pointerEvents: "none",
-      }}
-    />
-  );
-};
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${parts.join(
+      ""
+    )}</svg>`;
+    tiles.push(`url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`);
+  }
+  return tiles;
+})();
+
+export const Grain: React.FC<{ frame: number; opacity?: number; cell?: number }> = ({
+  frame,
+  opacity = 0.14,
+}) => (
+  <AbsoluteFill
+    style={{
+      backgroundImage: GRAIN_TILES[frame % GRAIN_TILES.length],
+      backgroundRepeat: "repeat",
+      mixBlendMode: "overlay",
+      opacity,
+      pointerEvents: "none",
+    }}
+  />
+);
 
 /** Diagonal light streak that slides across on a musical cycle. */
 export const LightSweep: React.FC<{

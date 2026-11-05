@@ -32,18 +32,66 @@ export const TWO_ON_BENCH: DoodleDef = {
   ],
 };
 
-/** the entrance door with its lamp — подъезд №3 */
+/** the entrance: steps, a double door, the canopy and its lamp — подъезд №3 */
 export const DOORWAY: DoodleDef = {
   name: "подъезд",
   strokes: [
-    { d: "M 28 34 L 28 92 L 72 92 L 72 34 Z" },
-    { d: "M 50 34 L 50 92" },
-    { d: "M 40 62 L 44 62 M 56 62 L 60 62" },      // handles
-    { d: "M 34 18 L 66 18 L 60 30 L 40 30 Z" },    // canopy
-    { d: circle(50, 26, 4) },                      // lamp
-    { d: "M 50 10 L 50 16 M 38 14 L 42 19 M 62 14 L 58 19" }, // light rays
-    { d: "M 78 72 L 86 72 L 86 80 L 78 80 Z" },    // the "3" plate
-    { d: "M 80 74 Q 85 74 83 77 Q 85 77 83 79 L 80 79" },
+    { d: "M 18 92 L 82 92" },                          // pavement
+    { d: "M 26 92 L 26 86 L 74 86 L 74 92" },          // lower step
+    { d: "M 31 86 L 31 81 L 69 81 L 69 86" },          // upper step
+    { d: "M 34 81 L 34 38 L 66 38 L 66 81" },          // doorway
+    { d: "M 50 38 L 50 81" },                          // the two leaves
+    { d: "M 45 60 L 45 65 M 55 60 L 55 65" },          // handles
+    { d: "M 38 44 L 46 44 L 46 52 L 38 52 Z" },        // small glass panes
+    { d: "M 54 44 L 62 44 L 62 52 L 54 52 Z" },
+    { d: "M 24 30 L 76 30 L 76 26 L 24 26 Z" },        // canopy slab
+    { d: "M 27 30 L 27 36 M 73 30 L 73 36", w: 2.2 },  // canopy supports
+    { d: "M 50 30 L 50 33", w: 2.2 },                  // lamp stem
+    { d: circle(50, 35, 2.4) },                        // lamp
+    { d: "M 44 34 L 41 31 M 56 34 L 59 31", w: 1.8 },  // light
+    { d: "M 70 42 L 80 42 L 80 54 L 70 54 Z", w: 2.2 }, // the number plate
+    { d: "M 73 45 Q 78 45 76 48 Q 78 48 76 51 L 73 51", w: 2.4 },
+  ],
+};
+
+/** a block of flats behind everything — depth without detail */
+export const FACADE: DoodleDef = {
+  name: "дом",
+  strokes: [
+    { d: "M 6 92 L 6 24 L 94 24 L 94 92" },
+    { d: "M 6 24 L 94 24", w: 3.4 },
+    { d: "M 16 34 L 30 34 L 30 46 L 16 46 Z" },
+    { d: "M 43 34 L 57 34 L 57 46 L 43 46 Z" },
+    { d: "M 70 34 L 84 34 L 84 46 L 70 46 Z" },
+    { d: "M 16 56 L 30 56 L 30 68 L 16 68 Z" },
+    { d: "M 43 56 L 57 56 L 57 68 L 43 68 Z" },
+    { d: "M 70 56 L 84 56 L 84 68 L 70 68 Z" },
+    { d: "M 23 34 L 23 46 M 16 40 L 30 40", w: 1.6 },
+    { d: "M 50 56 L 50 68 M 43 62 L 57 62", w: 1.6 },
+  ],
+};
+
+/** a yard lamppost */
+export const LAMPPOST: DoodleDef = {
+  name: "фонарь",
+  strokes: [
+    { d: "M 50 92 L 50 26", w: 3.4 },
+    { d: "M 44 92 L 56 92", w: 3.4 },
+    { d: "M 50 26 Q 50 16 62 16" },
+    { d: "M 56 16 L 68 16 L 65 26 L 59 26 Z" },
+    { d: "M 62 30 L 62 36 M 54 32 L 50 37 M 70 32 L 74 37", w: 2 },
+  ],
+};
+
+/** a bench on its own, for scenes where nobody is sitting on it */
+export const BENCH: DoodleDef = {
+  name: "лавка",
+  strokes: [
+    { d: "M 10 62 L 90 62" },
+    { d: "M 14 52 L 86 52" },
+    { d: "M 20 62 L 20 84 M 80 62 L 80 84" },
+    { d: "M 20 52 L 20 62 M 80 52 L 80 62", w: 2.4 },
+    { d: "M 6 86 L 94 86", w: 2.4 },
   ],
 };
 
@@ -142,6 +190,7 @@ export const BUS_STOP: DoodleDef = {
 
 export const DOODLES: DoodleDef[] = [
   TWO_ON_BENCH, DOORWAY, STAIRS, CAT, WINDOW, CIGARETTE, HEART, MOON, PHONE, BUS_STOP,
+  FACADE, LAMPPOST, BENCH,
 ];
 
 export const byName = (name: string): DoodleDef =>
@@ -172,9 +221,12 @@ export const Doodle: React.FC<{
   rotate?: number;
   boilFrame?: number;
   opacity?: number;
+  /** "center" puts (x, y) at the middle, "bottom" stands the drawing on y */
+  anchor?: "center" | "bottom";
 }> = ({
   def, progress, size, x, y,
   color = BRAND.marker, strokeWidth = 3.2, rotate = 0, boilFrame = 0, opacity = 1,
+  anchor = "center",
 }) => {
   const n = def.strokes.length;
   const p = Math.max(0, Math.min(1, progress));
@@ -193,7 +245,8 @@ export const Doodle: React.FC<{
         left: x,
         top: y,
         overflow: "visible",
-        transform: `translate(-50%, -50%) rotate(${rotate}deg) translate(${jx.toFixed(2)}px, ${jy.toFixed(2)}px)`,
+        transform: `translate(-50%, ${anchor === "bottom" ? "-100%" : "-50%"}) rotate(${rotate}deg) translate(${jx.toFixed(2)}px, ${jy.toFixed(2)}px)`,
+        transformOrigin: anchor === "bottom" ? "50% 100%" : "50% 50%",
         opacity,
       }}
     >

@@ -11,6 +11,8 @@ import { Sheet } from "./templates/Sheet";
 import { Marker } from "./templates/Marker";
 import { ZineCut } from "./templates/ZineCut";
 import { Stairwell3D } from "./templates/Stairwell3D";
+import { InkPulse } from "./templates/InkPulse";
+import { InkScene } from "./templates/InkScene";
 
 /** Duration, size and fps all come from clip.json (rules.md §7.1). */
 const metadata = ({ props }: { props: ClipProps }) => ({
@@ -42,5 +44,9 @@ export const RemotionRoot: React.FC = () => (
     <Composition id="th3rd-marker" component={Marker} {...common} />
     <Composition id="th3rd-zine" component={ZineCut} {...common} />
     <Composition id="th3rd-stairwell" component={Stairwell3D} {...common} />
+
+    {/* generated visuals — no artwork needed */}
+    <Composition id="ink-pulse" component={InkPulse} {...common} />
+    <Composition id="ink-scene" component={InkScene} {...common} />
   </>
 );
