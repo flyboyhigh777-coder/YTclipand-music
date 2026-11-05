@@ -42,7 +42,7 @@ export const StreetWalk: React.FC<ClipProps> = (props) => {
   const strideLength = width * 0.34;
   const travel = stride * strideLength;
 
-  const personH = height * 0.23;
+  const personH = height * 0.27;
 
   return (
     <AbsoluteFill style={{ backgroundColor: NIGHT.sky }}>
@@ -114,7 +114,7 @@ export const StreetWalk: React.FC<ClipProps> = (props) => {
       </svg>
 
       {/* lampposts: fastest layer, each with its own pool of light */}
-      {repeated(width * 0.72, travel * 0.95, width).map((x, i) => (
+      {repeated(width * 0.72, travel * 0.95 + width * 0.36, width).map((x, i) => (
         <Lamppost
           key={`lamp-${i}`}
           x={x}
@@ -128,14 +128,14 @@ export const StreetWalk: React.FC<ClipProps> = (props) => {
 
       {/* the walker stays in frame; the world moves instead */}
       <Person
-        x={width * 0.36}
-        y={ground}
+        x={width * 0.34}
+        y={ground + personH * 0.03}
         height={personH}
         phase={stride}
         pose="walk"
         facing={1}
         color={NIGHT_INK}
-        strokeWidth={3.8}
+        strokeWidth={2.1}
       />
 
       {/* a cat trotting a little behind */}
@@ -146,7 +146,7 @@ export const StreetWalk: React.FC<ClipProps> = (props) => {
         phase={stride * 1.7}
         facing={1}
         color={NIGHT_INK}
-        strokeWidth={2.8}
+        strokeWidth={2.6}
         opacity={0.85}
       />
 

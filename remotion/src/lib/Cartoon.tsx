@@ -26,6 +26,8 @@ type Pt = [number, number];
 const line = (pts: Pt[]): string =>
   pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
 
+/** A point `len` away from `from`, at `angle` radians from straight DOWN.
+ *  Positive angles lean forward (to the right of the drawing). */
 const polar = (from: Pt, angle: number, len: number): Pt => [
   from[0] + Math.sin(angle) * len,
   from[1] + Math.cos(angle) * len,
@@ -51,9 +53,14 @@ export const Person: React.FC<{
   opacity?: number;
   bob?: number;           // extra vertical bounce, e.g. from the kick
   seed?: number;
+  /** colour painted under the figure so the scene behind does not show through
+   *  its outline; line art has no fill, and a lamppost crossing a head reads
+   *  as a mistake */
+  knockout?: string | null;
 }> = ({
   x, y, height, phase = 0, pose = "walk", facing = 1,
   color = NIGHT_INK, strokeWidth = 3.4, opacity = 1, bob = 0, seed = 1,
+  knockout = NIGHT.sky,
 }) => {
   const s = height / 100;
   const p = phase % 1;
@@ -66,20 +73,21 @@ export const Person: React.FC<{
   const headC: Pt = [50, 27 - bounce];
 
   // legs: thigh then shin, with a knee that bends on the forward swing
-  const legAngle = (sw: number) => 0.42 * sw;
-  const kneeBend = (sw: number) => 0.55 * Math.max(0, -sw) + 0.12;
+  const legAngle = (sw: number) => 0.44 * sw;
+  const kneeBend = (sw: number) => 0.5 * Math.max(0, -sw) + 0.08;
 
+  // angles are measured from straight down, so the limbs hang the right way up
   const leg = (sw: number): Pt[] => {
     const a = legAngle(sw);
-    const knee = polar(hip, Math.PI - a, 20);
-    const foot = polar(knee, Math.PI - a + kneeBend(sw), 20);
-    return [hip, knee, [foot[0], Math.min(foot[1], 96)]];
+    const knee = polar(hip, a, 20);
+    const foot = polar(knee, a - kneeBend(sw), 20);
+    return [hip, knee, foot];
   };
 
   const arm = (sw: number): Pt[] => {
     const a = 0.5 * sw;
-    const elbow = polar(neck, Math.PI - a, 13);
-    const hand = polar(elbow, Math.PI - a - 0.35, 12);
+    const elbow = polar(neck, a, 13);
+    const hand = polar(elbow, a + 0.3, 12);
     return [neck, elbow, hand];
   };
 
@@ -115,6 +123,22 @@ export const Person: React.FC<{
         opacity,
       }}
     >
+      {knockout && (
+        <g>
+          <circle cx={headC[0]} cy={headC[1]} r={8.5} fill={knockout} stroke={knockout} strokeWidth={strokeWidth * 1.8} />
+          {strokes.map((d, i) => (
+            <path
+              key={`ko-${i}`}
+              d={d}
+              fill="none"
+              stroke={knockout}
+              strokeWidth={strokeWidth * 2.0}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </g>
+      )}
       <circle
         cx={headC[0]}
         cy={headC[1]}
@@ -145,7 +169,11 @@ export const Person: React.FC<{
 export const Cat: React.FC<{
   x: number; y: number; height: number; phase?: number;
   facing?: 1 | -1; color?: string; strokeWidth?: number; opacity?: number;
-}> = ({ x, y, height, phase = 0, facing = 1, color = NIGHT_INK, strokeWidth = 3, opacity = 1 }) => {
+  knockout?: string | null;
+}> = ({
+  x, y, height, phase = 0, facing = 1, color = NIGHT_INK, strokeWidth = 3,
+  opacity = 1, knockout = NIGHT.sky,
+}) => {
   const p = phase % 1;
   const a = Math.sin(p * Math.PI * 2) * 5;
   const b = Math.sin(p * Math.PI * 2 + Math.PI) * 5;
@@ -160,6 +188,15 @@ export const Cat: React.FC<{
         transform: `translate(-50%, 0) scale(${facing}, 1)`, transformOrigin: "50% 100%", opacity,
       }}
     >
+      {knockout && (
+        <g stroke={knockout} strokeWidth={strokeWidth * 2.0} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M 24 72 Q 26 52 44 52 Q 66 52 68 72" />
+          <circle cx={74} cy={50} r={11} fill={knockout} />
+          <path d="M 66 42 L 63 31 L 72 38 M 82 42 L 85 31 L 76 38" />
+          <path d={`M 32 72 L ${32 + a} 90 M 44 72 L ${44 + b} 90 M 58 72 L ${58 + a} 90 M 66 72 L ${66 + b} 90`} />
+          <path d={`M 24 70 Q ${10 + tail} ${62 + tail * 0.4} ${16 + tail} ${44 + tail * 0.3}`} />
+        </g>
+      )}
       <path d="M 24 72 Q 26 52 44 52 Q 66 52 68 72" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
       <circle cx={74} cy={50} r={11} fill="none" stroke={color} strokeWidth={strokeWidth} />
       <path d="M 66 42 L 63 31 L 72 38 M 82 42 L 85 31 L 76 38" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />

@@ -38,11 +38,11 @@ export const NightYard: React.FC<ClipProps> = (props) => {
   // the walk: in from the right, stops under the lamp, then smokes
   const arriveAt = total * 0.42;
   const walking = m.t < arriveAt;
-  const personX = interpolate(m.t, [0, arriveAt], [width * 1.12, width * 0.64], {
+  const personX = interpolate(m.t, [0, arriveAt], [width * 1.15, width * 0.58], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const personH = height * 0.21;
+  const personH = height * 0.26;
 
   // the cat crosses later, in the foreground
   const catStart = total * 0.46;
@@ -51,7 +51,7 @@ export const NightYard: React.FC<ClipProps> = (props) => {
     extrapolateRight: "clamp",
   });
 
-  const lampX = width * 0.76;
+  const lampX = width * 0.84;
   const lampH = height * 0.30;
 
   return (
@@ -125,13 +125,13 @@ export const NightYard: React.FC<ClipProps> = (props) => {
       {/* the character */}
       <Person
         x={personX}
-        y={ground}
+        y={ground + personH * 0.03}
         height={personH}
         phase={stride}
         pose={walking ? "walk" : "smoke"}
         facing={-1}
         color={NIGHT_INK}
-        strokeWidth={3.6}
+        strokeWidth={2.1}
         bob={walking ? 0 : -2 * m.kick}
       />
       {!walking && (
@@ -154,7 +154,7 @@ export const NightYard: React.FC<ClipProps> = (props) => {
           phase={stride * 1.6}
           facing={1}
           color={NIGHT_INK}
-          strokeWidth={3}
+          strokeWidth={2.6}
           opacity={0.95}
         />
       )}
