@@ -170,6 +170,78 @@ def fit_segment_to_lines(seg: Segment, line_spans: list[tuple[float, float]],
     return Segment(max(0.0, start), end, seg.score, seg.reason)
 
 
+def silence_gaps(
+    phrases: list[tuple[float, float]], duration: float
+) -> list[tuple[float, float]]:
+    """The quiet stretches between sung phrases — the only safe places to cut."""
+    if not phrases:
+        return [(0.0, duration)]
+    gaps: list[tuple[float, float]] = []
+    if phrases[0][0] > 0.2:
+        gaps.append((0.0, phrases[0][0]))
+    for (_, e), (s2, _) in zip(phrases, phrases[1:]):
+        if s2 - e > 0.12:
+            gaps.append((e, s2))
+    if duration - phrases[-1][1] > 0.2:
+        gaps.append((phrases[-1][1], duration))
+    return gaps
+
+
+def snap_to_phrases(
+    start: float,
+    end: float,
+    phrases: list[tuple[float, float]],
+    min_len: float,
+    max_len: float,
+    duration: float,
+    lead: float = 0.25,
+    tail: float = 0.40,
+) -> tuple[float, float]:
+    """Move a cut's edges into silence, so no sung line is chopped in half.
+
+    Nothing sounds worse in a short clip than a line cut mid-word. Both edges
+    are placed inside the gaps between phrases: the start just before a line
+    begins, the end just after one finishes, while the length stays in range.
+    """
+    gaps = silence_gaps(phrases, duration)
+    if not gaps:
+        return start, end
+
+    def place_start(t: float) -> float:
+        """A point in a gap, as late in it as possible (right before the line)."""
+        best = None
+        for gs, ge in gaps:
+            pos = max(gs + 0.05, ge - lead)
+            score = abs(pos - t)
+            if best is None or score < best[0]:
+                best = (score, pos)
+        return best[1] if best else t
+
+    def end_options(s0: float, lo: float, hi: float) -> list[float]:
+        """Points in gaps, just after a line ends, that give a usable length."""
+        out = []
+        for gs, ge in gaps:
+            pos = min(ge - 0.05, gs + tail)
+            if pos <= s0:
+                continue
+            if lo <= pos - s0 <= hi:
+                out.append(pos)
+        return out
+
+    s2 = place_start(start)
+    target = end - start
+    # exact range first; then a wider one, because ending in silence matters
+    # more than hitting the requested length to the second
+    for lo, hi in ((min_len, max_len), (min_len * 0.8, max_len * 1.3)):
+        opts = end_options(s2, lo, hi)
+        if opts:
+            e2 = min(opts, key=lambda p: abs((p - s2) - target))
+            break
+    else:
+        e2 = min(s2 + max_len, duration)
+    return max(0.0, s2), min(e2, duration)
+
+
 def plan_cuts(
     a: Analysis,
     min_len: float = 10.0,
@@ -177,6 +249,8 @@ def plan_cuts(
     count: int = 6,
     beats_per_bar: int = 4,
     prefer_vocal: bool = True,
+    respect_phrases: bool = True,
+    duration_slack: float = 1.5,
 ) -> list[Segment]:
     """Slice the whole track into short, bar-aligned cuts for short-form video.
 
@@ -246,4 +320,29 @@ def plan_cuts(
                 break
 
     chosen.sort(key=lambda s: s.start)
-    return chosen[:count]
+    chosen = chosen[:count]
+
+    if respect_phrases:
+        from .analysis import vocal_phrases
+        phrases = vocal_phrases(a)
+        adjusted: list[Segment] = []
+        for seg in chosen:
+            s2, e2 = snap_to_phrases(
+                seg.start, seg.end, phrases,
+                min_len=min_len, max_len=max_len,
+                duration=a.duration,
+            )
+            if e2 > a.duration:
+                e2 = a.duration
+            adjusted.append(Segment(s2, e2, seg.score, seg.reason))
+        # drop any overlap the nudging may have created
+        adjusted.sort(key=lambda s: s.start)
+        out: list[Segment] = []
+        for seg in adjusted:
+            if out and seg.start < out[-1].end:
+                seg = Segment(out[-1].end + 0.05, seg.end, seg.score, seg.reason)
+            if seg.end - seg.start >= min_len * 0.7:
+                out.append(seg)
+        chosen = out
+
+    return chosen

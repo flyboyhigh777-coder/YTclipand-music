@@ -13,6 +13,8 @@ import { ZineCut } from "./templates/ZineCut";
 import { Stairwell3D } from "./templates/Stairwell3D";
 import { InkPulse } from "./templates/InkPulse";
 import { InkScene } from "./templates/InkScene";
+import { NightYard } from "./templates/NightYard";
+import { StreetWalk } from "./templates/StreetWalk";
 
 /** Duration, size and fps all come from clip.json (rules.md §7.1). */
 const metadata = ({ props }: { props: ClipProps }) => ({
@@ -48,5 +50,9 @@ export const RemotionRoot: React.FC = () => (
     {/* generated visuals — no artwork needed */}
     <Composition id="ink-pulse" component={InkPulse} {...common} />
     <Composition id="ink-scene" component={InkScene} {...common} />
+
+    {/* dark cartoons with animated characters */}
+    <Composition id="night-yard" component={NightYard} {...common} />
+    <Composition id="street-walk" component={StreetWalk} {...common} />
   </>
 );

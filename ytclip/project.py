@@ -43,8 +43,15 @@ TEMPLATES["ink-scene"] = (
 )
 
 TH3RD_TEMPLATES = ["th3rd-sheet", "th3rd-marker", "th3rd-zine", "th3rd-stairwell"]
+TEMPLATES["night-yard"] = (
+    "Мультик: ночной двор, человек приходит, курит под фонарём, кот перебегает, окна загораются."
+)
+TEMPLATES["street-walk"] = (
+    "Мультик: проход по ночной улице, город едет мимо слоями, шаги попадают в бит."
+)
+
 # default for short cuts: generated visuals, no artwork
-CUT_TEMPLATES = ["ink-scene", "ink-pulse"]
+CUT_TEMPLATES = ["night-yard", "street-walk", "ink-scene", "ink-pulse"]
 
 CAPTION_STYLES = ("word-pop", "line-karaoke", "line-fill")
 
